@@ -1,18 +1,19 @@
 {
-  "name": "karma-mocha",
-  "version": "1.0.1",
-  "description": "A Karma plugin. Adapter for Mocha testing framework.",
+  "name": "karma-no-mocha",
+  "version": "1.0.2",
+  "description": "karma-mocha without the mocha",
   "main": "lib/index.js",
   "sharedKarmaFiles": {
     "editorconfig": ".editorconfig",
     "gitattributes": ".gitattributes"
   },
   "scripts": {
-    "test": "grunt test"
+    "test": "grunt test",
+    "prepublish": "grunt build"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/karma-runner/karma-mocha.git"
+    "url": "git://github.com/mochajs/karma-mocha.git"
   },
   "keywords": [
     "karma-plugin",
@@ -45,9 +46,6 @@
     "mocha": "^2.3.3",
     "shared-karma-files": "git://github.com/karma-runner/shared-karma-files.git#82ae8d02",
     "sinon": "^1.17.2"
-  },
-  "peerDependencies": {
-    "mocha": "*"
   },
   "license": "MIT",
   "contributors": [
