@@ -1,6 +1,6 @@
 {
   "name": "karma-no-mocha",
-  "version": "1.1.0",
+  "version": "1.0.2",
   "description": "karma-mocha without the mocha",
   "main": "lib/index.js",
   "sharedKarmaFiles": {
