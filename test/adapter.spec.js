@@ -34,7 +34,7 @@ describe('adapter mocha', function () {
 
   describe('createMochaReporterConstructor', function () {
     beforeEach(function () {
-      this.karma = new Karma(new MockSocket(), null, null, null, {search: ''})
+      this.karma = new Karma(function (method, args) { })
       this.karma.config = {
         mocha: {
           reporter: 'html'
@@ -65,7 +65,7 @@ describe('adapter mocha', function () {
     var runner, tc
 
     beforeEach(function () {
-      tc = new Karma(new MockSocket(), null, null, null, {search: ''})
+      tc = new Karma(function (method, args) { })
       runner = new Emitter()
       var reporter = new (createMochaReporterConstructor(tc))(runner) // eslint-disable-line
     })
@@ -91,7 +91,11 @@ describe('adapter mocha', function () {
 
     describe('test end', function () {
       it('should report result', function () {
+        var beforeStartTime = Date.now()
+        var DURATION = 200
+
         sandbox.stub(tc, 'result', function (result) {
+          var afterEndTime = Date.now()
           expect(result.id).to.not.be.undefined
           expect(result.description).to.eq('should do something')
           expect(result.suite instanceof Array).to.eq(true)
@@ -99,17 +103,23 @@ describe('adapter mocha', function () {
           expect(result.skipped).to.to.eql(false)
           expect(result.log instanceof Array).to.eq(true)
           expect(result.assertionErrors instanceof Array).to.eq(true)
-          expect(result.time).to.eq(123)
+          expect(result.startTime).to.be.at.least(beforeStartTime)
+          expect(result.endTime - result.startTime).to.be.at.least(DURATION)
+          expect(result.endTime).to.be.at.most(afterEndTime)
+          expect(result.time).to.eq(DURATION)
         })
 
         var mockMochaResult = {
-          duration: 123,
+          duration: DURATION,
           parent: {title: 'desc2', parent: {title: 'desc1', root: true}, root: false},
           state: 'passed',
           title: 'should do something'
         }
 
         runner.emit('test', mockMochaResult)
+        // wait at least 200ms to get different start and end times
+        var afterStartTime = Date.now()
+        while (Date.now() - afterStartTime < DURATION) {}
         runner.emit('test end', mockMochaResult)
 
         expect(tc.result.called).to.eq(true)
@@ -215,6 +225,47 @@ describe('adapter mocha', function () {
 
         expect(tc.result.called).to.eq(true)
       })
+
+      it('should report mocha properties through the `expose` option', function () {
+        tc.config = {
+          mocha: {
+            expose: ['body', 'hello']
+          }
+        }
+
+        sandbox.stub(tc, 'result', function (result) {
+          expect(result.mocha.body).to.eq('function(){ expect(false).to.be(true) }')
+          expect(result.mocha.hello).to.eq('world')
+        })
+
+        var mockMochaResult = {
+          parent: {title: 'desc2', root: true},
+          title: 'should do something',
+          body: 'function(){ expect(false).to.be(true) }',
+          hello: 'world'
+        }
+
+        runner.emit('test end', mockMochaResult)
+
+        expect(tc.result.called).to.eq(true)
+      })
+
+      it('should not report mocha properties if `expose` is not configured', function () {
+        sandbox.stub(tc, 'result', function (result) {
+          expect(result.mocha).to.not.exist
+        })
+
+        var mockMochaResult = {
+          parent: {title: 'desc2', root: true},
+          title: 'should do something',
+          body: 'function(){ expect(false).to.be(true) }',
+          hello: 'world'
+        }
+
+        runner.emit('test end', mockMochaResult)
+
+        expect(tc.result.called).to.eq(true)
+      })
     })
 
     describe('fail', function () {
@@ -269,6 +320,37 @@ describe('adapter mocha', function () {
         }
 
         var stack =
+          'at $httpBackend (http://localhost:8080/base/app/bower_components/angular-mocks/angular-mocks.js?506e0a37bcd764ec63da3fd7005bf56592b3df32:1149)\n' +
+          'at sendReq (http://localhost:8080/base/app/bower_components/angular/angular.js?7deca05396a4331b08f812e4962ef9df1d9de0b5:8408)\n' +
+          'at http://localhost:8080/base/app/bower_components/angular/angular.js?7deca05396a4331b08f812e4962ef9df1d9de0b5:8125\n' +
+          'at http://localhost:8080/base/test/client/spec/controllers/list/formCtrlSpec.js?67eaca0f801cf45a86802a262618a6cfdc6a47be:110\n' +
+          'at invoke (http://localhost:8080/base/app/bower_components/angular/angular.js?7deca05396a4331b08f812e4962ef9df1d9de0b5:4068)\n' +
+          'at workFn (http://localhost:8080/base/app/bower_components/angular-mocks/angular-mocks.js?506e0a37bcd764ec63da3fd7005bf56592b3df32:2194)\n' +
+          'at callFn (http://localhost:8080/base/node_modules/mocha/mocha.js?529c1ea3966a13c21efca5afe9a2317dafcd8abc:4338)\n' +
+          'at http://localhost:8080/base/node_modules/mocha/mocha.js?529c1ea3966a13c21efca5afe9a2317dafcd8abc:4331\n' +
+          'at next (http://localhost:8080/base/node_modules/mocha/mocha.js?529c1ea3966a13c21efca5afe9a2317dafcd8abc:4653)\n' +
+          'at http://localhost:8080/base/node_modules/mocha/mocha.js?529c1ea3966a13c21efca5afe9a2317dafcd8abc:4663\n' +
+          'at next (http://localhost:8080/base/node_modules/mocha/mocha.js?529c1ea3966a13c21efca5afe9a2317dafcd8abc:4601)\n'
+
+        runner.emit('test', mockMochaResult)
+        runner.emit('fail', mockMochaResult, {message: 'Another fail.', stack: stack})
+        runner.emit('test end', mockMochaResult)
+
+        expect(tc.result.called).to.eq(true)
+      })
+
+      it('should not remove escaped strings containing mocha stack entries', function () {
+        sandbox.stub(tc, 'result', function (result) {
+          var log = result.log[0]
+          expect(log).to.contain('something important that contains an escaped mocha stack trace')
+        })
+
+        var mockMochaResult = {
+          parent: {root: true}
+        }
+
+        var stack =
+          'something important that contains an escaped mocha stack trace at workFn (http://localhost:8080/base/app/bower_components/angular-mocks/angular-mocks.js?506e0a37bcd764ec63da3fd7005bf56592b3df32:2194)\\n at callFn (http://localhost:8080/base/node_modules/mocha/mocha.js?312499f61e38c4f82b2789b388ced378202a1e75:4471:21)\\n    at Hook.Runnable.run (http://localhost:8080/base/node_modules/mocha/mocha.js?312499f61e38c4f82b2789b388ced378202a1e75:4464:7)\\n\n' +
           'at $httpBackend (http://localhost:8080/base/app/bower_components/angular-mocks/angular-mocks.js?506e0a37bcd764ec63da3fd7005bf56592b3df32:1149)\n' +
           'at sendReq (http://localhost:8080/base/app/bower_components/angular/angular.js?7deca05396a4331b08f812e4962ef9df1d9de0b5:8408)\n' +
           'at http://localhost:8080/base/app/bower_components/angular/angular.js?7deca05396a4331b08f812e4962ef9df1d9de0b5:8125\n' +
@@ -390,6 +472,22 @@ describe('adapter mocha', function () {
       }
 
       expect(createConfigObject(this.karma).reporter).not.to.eq('test')
+    })
+
+    it('should ignore property require from client config', function () {
+      this.karma.config.mocha = {
+        require: 'test'
+      }
+
+      expect(createConfigObject(this.karma).require).not.to.eq('test')
+    })
+
+    it('should ignore property expose from client config', function () {
+      this.karma.config.mocha = {
+        expose: 'body'
+      }
+
+      expect(createConfigObject(this.karma).expose).not.to.eq('body')
     })
 
     it('should merge the globals from client config if they exist', function () {
